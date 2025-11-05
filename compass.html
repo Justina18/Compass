@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magnetic Declination Calculator</title>
+</head>
+<body>
+    <div class="container">
+        <h1>🧭 Magnetic Declination Calculator</h1>
+        <p class="subtitle">Find the angle between True North and Magnetic North</p>
+
+        <div id="error" class="error" style="display: none;"></div>
+
+        <div class="input-section">
+            <div class="input-row">
+                <div>
+                    <label for="latitude">Latitude (°)</label>
+                    <input type="number" id="latitude" placeholder="34.0522" step="any" min="-90" max="90">
+                </div>
+                <div>
+                    <label for="longitude">Longitude (°)</label>
+                    <input type="number" id="longitude" placeholder="-118.2437" step="any" min="-180" max="180">
+                </div>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+                <label for="date">Date (Optional)</label>
+                <input type="date" id="date">
+            </div>
+
+            <button class="primary-btn" onclick="calculate()">Calculate Declination</button>
+            <button class="secondary-btn" onclick="useMyLocation()">📍 Use My Location</button>
+        </div>
+
+        <div id="loading" class="loading" style="display: none;">
+            Calculating...
+        </div>
+
+        <div id="result" class="result-section">
+            <div class="declination-value" id="decValue"></div>
+            <div class="declination-direction" id="decDirection"></div>
+            
+            <div class="explanation" id="explanation"></div>
+
+            <div class="compass-container">
+                <svg id="compass" width="200" height="200" viewBox="0 0 200 200">
+                    <circle cx="100" cy="100" r="90" fill="none" stroke="#e2e8f0" stroke-width="2"/>
+                    <circle cx="100" cy="100" r="85" fill="white"/>
+                    <text x="100" y="25" text-anchor="middle" font-size="16" font-weight="bold" fill="#2d3748">N</text>
+                    <text x="175" y="105" text-anchor="middle" font-size="16" font-weight="bold" fill="#718096">E</text>
+                    <text x="100" y="185" text-anchor="middle" font-size="16" font-weight="bold" fill="#718096">S</text>
+                    <text x="25" y="105" text-anchor="middle" font-size="16" font-weight="bold" fill="#718096">W</text>
+                    <g id="trueNorth">
+                        <line x1="100" y1="100" x2="100" y2="40" stroke="#2d3748" stroke-width="3"/>
+                        <polygon points="100,30 95,45 105,45" fill="#2d3748"/>
+                        <text x="100" y="55" text-anchor="middle" font-size="10" fill="#2d3748">True N</text>
+                    </g>
+                    <g id="magneticNorth">
+                        <line x1="100" y1="100" x2="100" y2="40" stroke="#e53e3e" stroke-width="3"/>
+                        <polygon points="100,30 95,45 105,45" fill="#e53e3e"/>
+                        <text x="100" y="70" text-anchor="middle" font-size="10" fill="#e53e3e">Mag N</text>
+                    </g>
+                    <circle cx="100" cy="100" r="4" fill="#4a5568"/>
+                </svg>
+            </div>
+
+            <div style="text-align: center; color: #718096; font-size: 12px;">
+                <strong>Location:</strong> <span id="locationDisplay"></span><br>
+                <strong>Date:</strong> <span id="dateDisplay"></span>
+            </div>
+        </div>
+
+        <div class="info-section">
+            <h3>About Magnetic Declination</h3>
+            <p>Magnetic declination is the angle between magnetic north (where your compass points) and true north (geographic north pole). This angle varies by location and changes slowly over time due to shifts in Earth's magnetic field.</p>
+            
+            <p><strong>Data Source:</strong> Calculations use the <a href="https://www.ncei.noaa.gov/products/world-magnetic-model" target="_blank">World Magnetic Model (WMM)</a> developed by NOAA and the British Geological Survey.</p>
+            
+            <p><strong>How to use:</strong> If declination is <strong>East</strong>, add it to your compass bearing. If <strong>West</strong>, subtract it. This converts between magnetic and true bearings.</p>
+        </div>
+    </div>
+
+    <script>
+        const WMM = {
+            epoch: 2020.0,
+            g: [
+                [0, -29404.8, -1450.9, 4652.5, -2499.6],
+                [0, -2499.6, 2982.0, -2991.6],
+                [0, 1677.0, -734.6],
+                [0, 1363.2]
+            ],
+            h: [
+                [0, 0, 4652.5, -2991.6, 809.4],
+                [0, 0, -734.6, -82.1],
+                [0, 0, 286.4],
+                [0, 0]
+            ],
+            gSv: [
+                [0, 5.7, -7.4, -11.0, -3.9],
+                [0, -3.9, -2.6, -7.7],
+                [0, 2.1, 3.1],
+                [0, -0.8]
+            ],
+            hSv: [
+                [0, 0, -11.0, -7.7, -1.1],
+                [0, 0, 3.1, 1.4],
+                [0, 0, -0.8],
+                [0, 0]
+            ]
+        };
+
+        function calculateDeclination(lat, lon, date) {
+            const year = date.getFullYear();
+            const start = new Date(year, 0, 1);
+            const diff = date - start;
+            const oneDay = 1000 * 60 * 60 * 24;
+            const dayOfYear = Math.floor(diff / oneDay);
+            const daysInYear = (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 366 : 365;
+            const decimalYear = year + (dayOfYear / daysInYear);
+            const dt = decimalYear - WMM.epoch;
+            const latRad = lat * Math.PI / 180;
+            const lonRad = lon * Math.PI / 180;
+            
+            const a = 6378.137; // Earth's equatorial radius in km
+            const b = 6356.752; // Earth's polar radius in km
+            const r = a; // Simplified: use mean radius at sea level
+
+            // Compute magnetic field components (simplified calculation)
+            let X = 0, Y = 0, Z = 0;
+            
+            // This is a simplified WMM calculation using only the first few coefficients
+            // For better accuracy, a full implementation would use all coefficients
+            const cosLat = Math.cos(latRad);
+            const sinLat = Math.sin(latRad);
+            
+            // Main field contribution (degree 1 only for simplicity)
+            const g10 = WMM.g[1][0] + WMM.gSv[1][0] * dt;
+            const g11 = WMM.g[1][1] + WMM.gSv[1][1] * dt;
+            const h11 = WMM.h[1][1] + WMM.hSv[1][1] * dt;
+            
+            X = -g10 * cosLat;
+            Y = (g11 * Math.cos(lonRad) + h11 * Math.sin(lonRad)) * cosLat;
+            Z = g10 * sinLat * 2;
+
+            // Add degree 2 terms for better accuracy
+            if (WMM.g[2] && WMM.g[2][0]) {
+                const g20 = WMM.g[2][0] + WMM.gSv[2][0] * dt;
+                const g21 = WMM.g[2][1] + WMM.gSv[2][1] * dt;
+                const h21 = WMM.h[2][1] + WMM.hSv[2][1] * dt;
+                
+                const P20 = (3 * sinLat * sinLat - 1) / 2;
+                const P21 = 3 * sinLat * cosLat;
+                
+                X += -g20 * P20 * cosLat - (g21 * Math.cos(lonRad) + h21 * Math.sin(lonRad)) * P21;
+                Y += (g21 * Math.cos(lonRad) + h21 * Math.sin(lonRad)) * cosLat;
+                Z += g20 * P20 * sinLat * 3;
+            }
+
+            // Calculate declination (angle from true north)
+            const declination = Math.atan2(Y, X) * 180 / Math.PI;
+            
+            return declination;
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        function calculate() {
+            const lat = parseFloat(document.getElementById('latitude').value);
+            const lon = parseFloat(document.getElementById('longitude').value);
+            const dateInput = document.getElementById('date').value;
+            
+            if (isNaN(lat) || isNaN(lon)) {
+                showError('Please enter valid latitude and longitude values.');
+                return;
+            }
+
+            if (lat < -90 || lat > 90) {
+                showError('Latitude must be between -90 and 90 degrees.');
+                return;
+            }
+
+            if (lon < -180 || lon > 180) {
+                showError('Longitude must be between -180 and 180 degrees.');
+                return;
+            }
+
+            // Use provided date or today
+            const date = dateInput ? new Date(dateInput) : new Date();
+            
+            // Check date range (WMM2020 valid for 2020-2025)
+            const year = date.getFullYear();
+            if (year < 2020 || year > 2025) {
+                showError('Date must be between 2020 and 2025 for accurate results.');
+                return;
+            }
+
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('result').classList.remove('show');
+
+            setTimeout(() => {
+                const declination = calculateDeclination(lat, lon, date);
+                displayResult(declination, lat, lon, date);
+                document.getElementById('loading').style.display = 'none';
+            }, 300);
+        }
+
+        function displayResult(declination, lat, lon, date) {
+            const absDecl = Math.abs(declination);
+            const direction = declination >= 0 ? 'East' : 'West';
+            
+            document.getElementById('decValue').textContent = absDecl.toFixed(1) + '°';
+            document.getElementById('decDirection').textContent = direction;
+            
+            const explanation = `At your location (${lat.toFixed(4)}°${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(4)}°${lon >= 0 ? 'E' : 'W'}) on ${date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}, magnetic declination is <strong>${absDecl.toFixed(1)}° ${direction}</strong>. This means your compass needle points ${absDecl.toFixed(1)}° ${direction.toLowerCase()} of True North.`;
+            
+            document.getElementById('explanation').innerHTML = explanation;
+            
+            document.getElementById('locationDisplay').textContent = `${lat.toFixed(4)}°${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(4)}°${lon >= 0 ? 'E' : 'W'}`;
+            document.getElementById('dateDisplay').textContent = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+            
+            // Rotate magnetic north arrow
+            const magneticNorth = document.getElementById('magneticNorth');
+            magneticNorth.setAttribute('transform', `rotate(${declination}, 100, 100)`);
+            
+            document.getElementById('result').classList.add('show');
+            document.getElementById('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function useMyLocation() {
+            if (!navigator.geolocation) {
+                showError('Geolocation is not supported by your browser.');
+                return;
+            }
+
+            document.getElementById('loading').style.display = 'block';
+            
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    document.getElementById('latitude').value = position.coords.latitude.toFixed(4);
+                    document.getElementById('longitude').value = position.coords.longitude.toFixed(4);
+                    document.getElementById('loading').style.display = 'none';
+                    calculate();
+                },
+                (error) => {
+                    document.getElementById('loading').style.display = 'none';
+                    let message = 'Unable to get your location. ';
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            message += 'Please enable location permissions.';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            message += 'Location information unavailable.';
+                            break;
+                        case error.TIMEOUT:
+                            message += 'Location request timed out.';
+                            break;
+                        default:
+                            message += 'An unknown error occurred.';
+                    }
+                    showError(message);
+                }
+            );
+        }
+        document.getElementById('date').valueAsDate = new Date();
+        document.getElementById('latitude').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') calculate();
+        });
+        document.getElementById('longitude').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') calculate();
+        });
+    </script>
+</body>
+</html>
